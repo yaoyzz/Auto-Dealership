@@ -1,4 +1,4 @@
-# Scrapy settings for universal project
+# Scrapy settings for universal project 
 #
 # For simplicity, this file contains only settings considered important or
 # commonly used. You can find more settings consulting the documentation:
@@ -12,6 +12,7 @@ BOT_NAME = "universal"
 SPIDER_MODULES = ["universal.spiders"]
 NEWSPIDER_MODULE = "universal.spiders"
 
+# LOGSTATS_INTERVAL = 3600000000000
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 #USER_AGENT = "universal (+http://www.yourdomain.com)"
