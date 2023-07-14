@@ -20,9 +20,9 @@ import re
 nest_asyncio.apply()
 
 class MyClass:
-    def __init__(self):
+    def __init__(self, page):
+            self.page = page
             self.function_map = {
-            # 'parse_test': self.parse_test,
             'parse_new': self.parse_new,
         }
 
@@ -47,19 +47,19 @@ class MyClass:
         else:
             return None
 
-    async def parse_new(self, response, page):
+    async def parse_new(self, response):
         try:
-            await page.goto(response.url)
+            await self.page.goto(response.url)
         except PyppeteerTimeoutError:
             print('Caught PyppeteerTimeoutError')
             return
 
         data_list = []
-        div_elements = await page.querySelectorAll('div')
+        div_elements = await self.page.querySelectorAll('div')
 
         for div_element in div_elements:
             # Get all attribute names of div element
-            attr_names = await page.evaluate('(element) => element.getAttributeNames()', div_element)
+            attr_names = await self.page.evaluate('(element) => element.getAttributeNames()', div_element)
 
             if any('vin' in attr_name.lower() or 
                     'model' in attr_name.lower() or 
@@ -71,19 +71,19 @@ class MyClass:
                     for attr_name in attr_names):
 
                 # Get the VIN, year, model, make, name, and price from the identified attributes
-                vin = await self.get_attribute_value(page, 'vin', attr_names, div_element)
-                year = await self.get_attribute_value(page, 'year', attr_names, div_element)
-                model = await self.get_attribute_value(page, 'model', attr_names, div_element)
-                make = await self.get_attribute_value(page, 'make', attr_names, div_element)
-                name = await self.get_attribute_value(page, 'name', attr_names, div_element)
-                price = await self.get_attribute_value(page, 'price', attr_names, div_element)
+                vin = await self.get_attribute_value(self.page, 'vin', attr_names, div_element)
+                year = await self.get_attribute_value(self.page, 'year', attr_names, div_element)
+                model = await self.get_attribute_value(self.page, 'model', attr_names, div_element)
+                make = await self.get_attribute_value(self.page, 'make', attr_names, div_element)
+                name = await self.get_attribute_value(self.page, 'name', attr_names, div_element)
+                price = await self.get_attribute_value(self.page, 'price', attr_names, div_element)
 
                 a_element = await div_element.querySelector('a')
-                href = await page.evaluate('(element) => element.getAttribute("href")', a_element) if a_element else None
+                href = await self.page.evaluate('(element) => element.getAttribute("href")', a_element) if a_element else None
                 # Get img src link from sub-xpath of the container
                 img_element = await div_element.querySelector('img')
                 if img_element:
-                    img_src = await page.evaluate('(element) => element.getAttribute("src")', img_element)
+                    img_src = await self.page.evaluate('(element) => element.getAttribute("src")', img_element)
                     img_src = urljoin(response.url, img_src)
                 else:
                     img_src = None
@@ -111,41 +111,20 @@ class MyClass:
             for item in data_list:
                 writer.write(item)
 
-    async def close_browser(self, page):
-        await page.browser.close()
+    # async def close_browser(self):
+    #     await self.page.browser.close()
 
 
 class MySpider(scrapy.Spider):
     name = 'myspider'
     start_urls = ['https://www.beavertontoyota.com', # initial built
-                  # DealerInspire
-                #   'https://www.beavertonhonda.com/',
-                #   'https://www.toyotaofcorvallis.com/',
-                #   'https://www.mercedesbenzbeaverton.com/',
-                  # DealerOn
-                  'https://www.mypowerhonda.com/',
-                #   'https://www.carltonmb.com/',
-                #   'https://www.greshamtoyota.com/',
-                #   # Dealer.com
-                #   'https://www.malonetoyota.com/',
-                #   'https://www.mercedesbenzofbellevue.com/',
-                #   'https://www.beavertonnissan.com/',
-                #   # FoxDealer
-                #   'https://www.tonkinwilsonvillenissan.com/',
-                #   'https://www.claremonttoyota.com/',
-                #   # DealerFire
-                #   'https://www.mbscottsdale.com/',
-                #   'https://www.jpauleytoyota.com/',
-                #   # Carforsale                   
-                #   'https://www.siamaks.com/',
-                #   'https://www.prestigeautopdx.com/',
-                #   # Dealer eProcess                  
-                #   'https://www.foxtoyotaofelpaso.com/',
-                #   'https://www.marianoriverahonda.com/',
-                #   # Sincro                  
-                #   'https://www.dublinnissan.com/',
-                #   'https://www.crestmontcadillac.com/'
+                  'https://www.mypowerhonda.com/'
                   ]
+    def __init__(self, *args, **kwargs):
+        super(MySpider, self).__init__(*args, **kwargs)
+        self.loop = asyncio.get_event_loop()
+        self.browser = self.loop.run_until_complete(launch())
+        self.page = self.loop.run_until_complete(self.browser.newPage())
     
     def parse(self, response):
         # Extract links to new cars
@@ -156,8 +135,6 @@ class MySpider(scrapy.Spider):
         used_inventory_links = LinkExtractor(allow='used').extract_links(response)
         for link in used_inventory_links:
             yield scrapy.Request(url=link.url, callback=self.parse_item, cb_kwargs={'func': 'parse_new'})
-
-        
 
         # Extract link to next page and yield a new request
         # translate() allows case insensitive
@@ -170,12 +147,15 @@ class MySpider(scrapy.Spider):
 
 
     async def parse_item(self, response, func):
-        obj = MyClass()
-        browser = await launch(headless=True)
-        page = await browser.newPage()
-        await asyncio.sleep(5)
-        
-        # Convert text response to HtmlResponse to get url
+        obj = MyClass(self.page)
         resp = HtmlResponse(url=response.url, body=response.text, encoding='utf-8')
-        await obj.function_map[func](resp, page)
-        await obj.close_browser(page)
+        await obj.function_map[func](resp)
+
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        spider = super(MySpider, cls).from_crawler(crawler, *args, **kwargs)
+        crawler.signals.connect(spider.spider_closed, signal=scrapy.signals.spider_closed)
+        return spider
+
+    async def spider_closed(self):
+        await self.browser.close()
