@@ -1,4 +1,5 @@
 import asyncio
+import pyppeteer
 from pyppeteer import launch
 from urllib.parse import urljoin, urlparse
 import json
@@ -40,24 +41,48 @@ class MyCrawler:
             if any(substring in attr_name.lower() for substring in substrings):
                 return attr_value
         return None
-
-    async def parse_page(self, url):
-        if url in self.visited_urls:  # Skip if the URL was already visited
-            return        
-        # await self.page.setCookie({
-        #     'name': 'session_1',
-        #     'value': 'abcd1234',
-        #     'domain': f'{urlparse(url).scheme}'
-        # })
-
-        # cookies = await self.page.cookies()
-        # print(cookies)
-        # # Set cookies
+    
+    @staticmethod
+    def generate_random_user_agent():
+        platforms = [
+            '(Windows NT 10.0; Win64; x64)', 
+            '(Windows NT 6.1; Win64; x64)', 
+            '(Windows NT 6.2; Win64; x64)', 
+            '(Windows NT 6.3; Win64; x64)',
+            '(Macintosh; Intel Mac OS X 10_15_7)', 
+            '(Macintosh; Intel Mac OS X 10_14_6)', 
+            '(Macintosh; Intel Mac OS X 10_13_6)', 
+            '(X11; Linux x86_64)', 
+            '(X11; Ubuntu; Linux x86_64)', 
+            '(X11; Fedora; Linux x86_64)', 
+            '(iPhone; CPU iPhone OS 14_0 like Mac OS X)', 
+            '(iPhone; CPU iPhone OS 13_7 like Mac OS X)',
+            '(iPad; CPU OS 14_0 like Mac OS X)', 
+            '(Android 11; Mobile; rv:68.0) Gecko/68.0 Firefox/68.0',
+            '(Android 10; Mobile; rv:68.0) Gecko/68.0 Firefox/68.0'
+        ]
         
+        browsers = [
+            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36', 
+            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36', 
+            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36', 
+            'Mozilla/5.0 Firefox/86.0',
+            'Mozilla/5.0 Firefox/78.0',
+            'Mozilla/5.0 Firefox/68.0',
+            'Mozilla/5.0 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15',
+            'Mozilla/5.0 (KHTML, like Gecko) Version/13.1.2 Safari/605.1.15'
+        ]
+        
+        platform = random.choice(platforms)
+        browser = random.choice(browsers)
+        
+        return f'Mozilla/5.0 {platform} {browser}'
+
+    async def navigate(self, url):
+        if url in self.visited_urls:  # Skip if the URL was already visited
+            return
         await self.page.goto(url)
-        # for inspecting current page
-        h1_text = await self.page.evaluate('document.querySelector("h1").textContent')
-        print(h1_text)
+        await asyncio.sleep(random.uniform(1, 5))
         self.visited_urls.add(url)
         # Check for the presence of the 'Accept' button and click it if it exists
         accept_buttons = await self.page.querySelectorAll('button[aria-label="Accept"]')
@@ -65,49 +90,67 @@ class MyCrawler:
             await accept_buttons[0].click()
             await asyncio.sleep(random.uniform(1, 3))  # wait for the click to be processed and for the page to update
 
+        # Pass the page to the parse_page method
+        await self.parse_page()
+
+    async def parse_page(self):
         # Get all the links on the page
         links = await self.page.querySelectorAll('a')
         link_hrefs = []
         for link in links:
             href = await self.page.evaluate('(element) => element.getAttribute("href")', link)
-            if href:  
+            if href:
                 link_hrefs.append(href)
-
         for href in link_hrefs:
-            full_url = urljoin(url, href)
+            full_url = urljoin(self.page.url, href)
             parsed_url = urlparse(full_url)
-            # if there are more than two slashes in the path, then it is a subcategory and we skip
-            if parsed_url.path.count('/') > 2:  
+            if parsed_url.path.count('/') > 2:  # if there are more than two slashes in the path, then it is a subcategory and we skip
                 continue
-            # await asyncio.sleep(random.uniform(1, 3))
-            print(full_url)
-            # await asyncio.sleep(2)
+            if full_url in self.visited_urls:
+                continue
             if re.search(r'new', full_url):
                 await self.parse_car(full_url, 'new')
-            elif re.search(r'used', full_url):
+                self.visited_urls.add(full_url)
+                await asyncio.sleep(random.uniform(1, 5))
+            if re.search(r'used', full_url):
                 await self.parse_car(full_url, 'used')
+                self.visited_urls.add(full_url)
+                await asyncio.sleep(random.uniform(1, 5))
         
-        # # Get the 'Next' button and click on it
-        # next_button = await self.page.xpath('//a[contains(translate(text(), "NEXT", "next"), "next") or contains(translate(@class, "NEXT", "next"), "next") or contains(translate(@rel, "NEXT", "next"), "next")]')
-        # if next_button:
-        #     # Click on the button and wait for navigation
-        #     await asyncio.gather(
-        #         next_button[0].click(),
-        #         self.page.waitForNavigation(),
-        #     )
-        #     # Get the new page's URL
-        #     next_page_url = self.page.url
-        #     # Parse the new page
-        #     await self.parse_page(next_page_url)
+        next_button = None 
+        # Get the 'Next' button and click on it
+        next_buttons = await self.page.querySelectorAll('a:not([disabled])')
+        for button in next_buttons:
+            text = await self.page.evaluate('(element) => element.textContent', button)
+            class_name = await self.page.evaluate('(element) => element.className', button)
+            rel = await self.page.evaluate('(element) => element.rel', button)
+            if 'next' in text.lower() or 'next' in class_name.lower() or 'next' in rel.lower():
+                next_button = button
+                break
+
+        if next_button:
+            # Click on the button and wait for navigation
+            try:
+                await asyncio.gather(
+                    next_button[0].click(),
+                    self.page.waitForNavigation(),
+                )
+            except pyppeteer.errors.TimeoutError:
+                pass
+            
+            await asyncio.sleep(random.uniform(1, 3))
+            # Call navigate again with the new page URL
+            await self.parse_page()
+
 
 
     async def parse_car(self, url, condition:str = None):
-        # await self.page.setUserAgent('Mozilla/5.0 (Windows NT 5.1; rv:5.0) Gecko/20100101 Firefox/5.0')
+        await self.page.setUserAgent(self.generate_random_user_agent())
         await self.page.goto(url)
-        # await asyncio.sleep(random.uniform(1, 5))
-        # html_content = await self.page.content()
-        # with open('page.html', 'w', encoding='utf-8') as f:
-        #     f.write(html_content)
+        await asyncio.sleep(random.uniform(1, 5))
+        html_content = await self.page.content()
+        with open('page.html', 'w', encoding='utf-8') as f:
+            f.write(html_content)
 
         data_list = []
         div_elements = await self.page.querySelectorAll('div')
@@ -191,15 +234,15 @@ class MyCrawler:
             writer.write_all(data_list)
 
     async def start(self):
-        self.browser = await launch(headless=True)
-        # self.browser = await launch(headless=False)
+        # self.browser = await launch(headless=True)
+        self.browser = await launch(headless=False)
         self.page = await self.browser.newPage()
         
         # specify the user agent to avoid blocking
         # await self.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; WOW64; rv:68.0) Gecko/20100101 Firefox/68.0')
-        await self.page.setUserAgent('Mozilla/5.0 (Windows NT 5.1; rv:5.0) Gecko/20100101 Firefox/5.0')
+        # await self.page.setUserAgent('Mozilla/5.0 (Windows NT 5.1; rv:5.0) Gecko/20100101 Firefox/5.0')
         for url in self.start_urls:
-            await self.parse_page(url)
+            await self.navigate(url)
 
         # Save crawled_vins to file
         with open('crawled_vins.txt', 'w') as file:
@@ -210,8 +253,8 @@ class MyCrawler:
 
 
 start_urls = [
-            # 'https://www.toyotaofcorvallis.com/new-vehicles/',
-            'https://www.beavertontoyota.com/'
+            'https://www.toyotaofcorvallis.com/new-vehicles/',
+            # 'https://www.beavertontoyota.com/'
             ]
 crawler = MyCrawler(start_urls)
 asyncio.run(crawler.start())
