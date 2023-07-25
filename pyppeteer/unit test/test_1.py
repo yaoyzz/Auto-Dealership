@@ -42,41 +42,6 @@ class MyCrawler:
                 return attr_value
         return None
     
-    @staticmethod
-    def generate_random_user_agent():
-        platforms = [
-            '(Windows NT 10.0; Win64; x64)', 
-            '(Windows NT 6.1; Win64; x64)', 
-            '(Windows NT 6.2; Win64; x64)', 
-            '(Windows NT 6.3; Win64; x64)',
-            '(Macintosh; Intel Mac OS X 10_15_7)', 
-            '(Macintosh; Intel Mac OS X 10_14_6)', 
-            '(Macintosh; Intel Mac OS X 10_13_6)', 
-            '(X11; Linux x86_64)', 
-            '(X11; Ubuntu; Linux x86_64)', 
-            '(X11; Fedora; Linux x86_64)', 
-            '(iPhone; CPU iPhone OS 14_0 like Mac OS X)', 
-            '(iPhone; CPU iPhone OS 13_7 like Mac OS X)',
-            '(iPad; CPU OS 14_0 like Mac OS X)', 
-            '(Android 11; Mobile; rv:68.0) Gecko/68.0 Firefox/68.0',
-            '(Android 10; Mobile; rv:68.0) Gecko/68.0 Firefox/68.0'
-        ]
-        
-        browsers = [
-            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36', 
-            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36', 
-            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36', 
-            'Mozilla/5.0 Firefox/86.0',
-            'Mozilla/5.0 Firefox/78.0',
-            'Mozilla/5.0 Firefox/68.0',
-            'Mozilla/5.0 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15',
-            'Mozilla/5.0 (KHTML, like Gecko) Version/13.1.2 Safari/605.1.15'
-        ]
-        
-        platform = random.choice(platforms)
-        browser = random.choice(browsers)
-        
-        return f'Mozilla/5.0 {platform} {browser}'
 
     async def navigate(self, url):
         if url in self.visited_urls:  # Skip if the URL was already visited
